@@ -1,0 +1,120 @@
+# autoload
+
+# SPECIALIZED COMPLETIONS /////////////////////////////////////////////////////////
+
+# Offers a list of all VMs (or aliases) for which an maction_* is possible
+_complete_all_vms ()
+{
+    local ret=
+    # VMS
+    local VM_COMPLETIONS=()
+
+    while IFS= read -r VM_NAME ; do
+        VM_COMPLETIONS+=("${VM_NAME}")
+    done < <(qvm-ls --raw-list | sort)
+
+    _arguments -C "*:VMs:($VM_COMPLETIONS)" && ret=0
+}
+
+# Completes all non-halted VMs, thus for which maction_shutdown is possible
+_complete_running_vms ()
+{
+    local VM_COMPLETIONS=()
+
+    while IFS= read -r VM ; do
+        echo "$VM" | read -r name class state 
+        if [ "$state" = "Halted" ]; then
+            continue
+        fi
+        VM_COMPLETIONS+=("${name}")
+    done < <(qvm-ls --fields NAME,CLASS,STATE | tail -n+2 | cut -f 2)
+
+    _arguments -C "*:Running VMs:($VM_COMPLETIONS)" && ret=0
+}
+
+# Completes all halted VMs, thus for which maction_start is possible
+_complete_halted_vms ()
+{
+    local VM_COMPLETIONS=()
+
+    while IFS= read -r VM ; do
+        echo "$VM" | read -r name class state 
+        if [ "$state" = "Running" ]; then
+            continue
+        fi
+        VM_COMPLETIONS+=("${name}")
+    done < <(qvm-ls --fields NAME,CLASS,STATE | tail -n+2 | cut -f 2)
+
+    _arguments -C "*:Halted VMs:($VM_COMPLETIONS)" && ret=0
+}
+
+# Completes the aliases set in qubes-terminal-hotkeys.conf for VMs.
+# FIX: Find a way to generate multiple completion groups without these stupid return bugs.
+_complete_vm_aliases ()
+{
+    . /etc/qubes-terminal-hotkeys.conf
+    local ALIAS_VM_COMPLETIONS=()
+
+    for key in "${(k)VM_SHORT_NAMES}" ; do
+        ALIAS_VM_COMPLETIONS+=("$key") 
+    done
+
+    _describe 'VM aliases' ALIAS_VM_COMPLETIONS 
+}
+
+# Completes all VMs that provide network, and are up, for maction_netvm.
+# FIX: Calls to qvm-prefs for each VM are too long, thus the big big lag
+_complete_netvms ()
+{
+    local VM_COMPLETIONS=()
+    while IFS= read -r VM; do
+        VM_COMPLETIONS+=("${VM}")
+    done < <(qvm-ls --raw-list | sort)
+
+    local NETVM_COMPLETIONS=()
+    local VMs=($(qvm-ls --raw-list | sort))
+    while IFS= read -r VM_NAME ; do
+        if [ $VM_NAME = "dom0" ]; then
+            continue 
+        fi
+        local provides_network=$(qvm-prefs "${VM_NAME}" provides_network)
+        if [ "$provides_network" = "True" ]; then
+            NETVM_COMPLETIONS+=("${VM_NAME}")
+        fi
+    done < <(qvm-ls --raw-list | sort)
+
+    _arguments -C \
+        "1:VMs:($VM_COMPLETIONS)" \
+        "2:Network VMs:($NETVM_COMPLETIONS)" && ret=0
+}
+
+# Completes the aliases set in qubes-terminal-hotkeys.conf for VM commands.
+_complete_short_commands ()
+{
+}
+
+# COMPLETION ENTRYPOINTS //////////////////////////////////////////////////////////
+
+# Completion dispatch for maction_start (background)
+_complete_maction_start ()
+{
+}
+
+# Completion dispatch for maction_netvm
+# _complete_maction_netvm ()
+#     _arguments -C \
+#         "1:VMs:_complete_all_vms" \
+#         "2:Network VMs:_complete_netvms" && ret=0
+# }
+
+# Completion dispatch for maction_shutdown
+_complete_maction_shutdown ()
+{
+}
+
+# ASSIGNMENTS /////////////////////////////////////////////////////////////////////
+
+compdef _complete_all_vms q r=q m=q u=q  # Start/run app in VMs
+compdef _complete_halted_vms b           # Start VMs in background
+compdef _complete_all_vms n              # Set network VM
+compdef _complete_running_vms s k=s p=s  # shutdown/kill/pause running VMs
